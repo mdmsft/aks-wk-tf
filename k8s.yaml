@@ -1,0 +1,79 @@
+apiVersion: storage.k8s.io/v1
+kind: StorageClass
+metadata:
+  name: azure-file
+provisioner: file.csi.azure.com
+allowVolumeExpansion: true
+parameters:
+  resourceGroup: aks-wk-dev-westeurope
+  storageAccount: stwkdevwesteurope
+  shareName: main
+  server: stwkdevwesteurope.privatelink.file.core.windows.net 
+reclaimPolicy: Delete
+volumeBindingMode: Immediate
+mountOptions:
+  - dir_mode=0777
+  - file_mode=0777
+  - uid=0
+  - gid=0
+  - mfsymlinks
+  - cache=strict  # https://linux.die.net/man/8/mount.cifs
+  - nosharesock  # reduce probability of reconnect race
+  - actimeo=30  # reduce latency for metadata-heavy workload
+---
+kind: PersistentVolumeClaim
+apiVersion: v1
+metadata:
+  name: azure-file
+spec:
+  accessModes:
+    - ReadWriteMany
+  resources:
+    requests:
+      storage: 1Ti
+  storageClassName: azure-file
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: server
+spec:
+  replicas: 6
+  selector:
+    matchLabels:
+      app: server
+  template:
+    metadata:
+      labels:
+        app: server
+    spec:
+      nodeSelector:
+        kubernetes.io/os: windows
+      containers:
+      - name: server
+        image: mcr.microsoft.com/windows/servercore:ltsc2022
+        resources:
+          limits:
+            memory: 1Gi
+            cpu: "1"
+        volumeMounts:
+        - name: alpha
+          mountPath: /c/Alpha
+        - name: bravo
+          mountPath: /c/Bravo
+        - name: charlie
+          mountPath: /c/Charlie
+        command:
+        - "ping"
+        - "-t"
+        - "stwkdevwesteurope.file.core.windows.net"
+      volumes:
+      - name: alpha
+        persistentVolumeClaim:
+          claimName: azure-file
+      - name: bravo
+        persistentVolumeClaim:
+          claimName: azure-file
+      - name: charlie
+        persistentVolumeClaim:
+          claimName: azure-file
